@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=77.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gsvpiko"
+version = "0.1.0"
+description = "Python control, recording and diagnostics tools for ME GSV-8 based measurement setups."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  {name = "GSVpiko contributors"}
+]
+license = "MIT"
+license-files = ["LICENSE*"]
+keywords = ["measurement", "GSV-8", "serial", "TCP", "force sensors"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Operating System :: OS Independent",
+  "Topic :: Scientific/Engineering",
+]
+dependencies = [
+  "pyserial>=3.5",
+  "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "ruff>=0.5",
+]
+
+[project.scripts]
+gsvpiko-client-tcp = "gsvpiko.app.client_tcp:main"
+gsvpiko-diagnose-connection = "gsvpiko.app.app_diagnose_connection:main"
+gsvpiko-diagnose-errors = "gsvpiko.app.app_diagnose_gsv_status_errors:main"
+gsvpiko-diagnose-runtime-rates = "gsvpiko.app.app_diagnose_runtime_rates:main"
+gsvpiko-external-tcp-interface = "gsvpiko.app.app_external_tcp_interface:main"
+gsvpiko-plot-csv = "gsvpiko.app.plot_gsvpiko_csv:main"
+gsvpiko-read-values = "gsvpiko.app.app_read_values_from_setup:main"
+gsvpiko-record-values = "gsvpiko.app.app_record_values_from_setup:main"
+gsvpiko-setup-application = "gsvpiko.app.app_setup_application:main"
+gsvpiko-setup-validation = "gsvpiko.app.app_setup_validation:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
