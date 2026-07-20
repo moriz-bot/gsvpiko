@@ -43,7 +43,7 @@ py -m pip install "gsvpiko @ git+https://github.com/moriz-bot/gsvpiko.git"
 Install a specific tagged version:
 
 ```powershell
-py -m pip install "gsvpiko @ git+https://github.com/moriz-bot/gsvpiko.git@v0.1.1"
+py -m pip install "gsvpiko @ git+https://github.com/moriz-bot/gsvpiko.git@v0.1.2"
 ```
 
 ### Local checkout
