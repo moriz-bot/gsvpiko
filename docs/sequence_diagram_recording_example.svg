@@ -20,9 +20,9 @@
      inkscape:pageopacity="0.0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
-     inkscape:zoom="0.50263393"
-     inkscape:cx="776.90736"
-     inkscape:cy="384.97202"
+     inkscape:zoom="4.0210714"
+     inkscape:cx="49.240607"
+     inkscape:cy="55.582201"
      inkscape:window-width="1920"
      inkscape:window-height="974"
      inkscape:window-x="-11"
@@ -59,6 +59,14 @@
          id="path2" />
     </marker>
   </defs>
+  <rect
+     style="fill:#ffffff;stroke:none;stroke-width:1.02155;stroke-dasharray:2.45172, 3.67758"
+     id="rect1"
+     width="1899.4784"
+     height="2067.4785"
+     x="0.010774865"
+     y="0.010774865"
+     inkscape:label="Background" />
   <text
      x="950"
      y="38"
@@ -286,13 +294,15 @@
      y="94"
      text-anchor="middle"
      class="actor"
-     id="text19">data/, logs/</text>
+     id="text19"
+     style="font-style:normal;font-variant:normal;font-weight:700;font-stretch:normal;font-size:13px;line-height:normal;font-family:Arial">output/</text>
   <text
      x="1785"
      y="111"
      text-anchor="middle"
      class="sub"
-     id="text20">CSV + report</text>
+     id="text20"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:10px;line-height:normal;font-family:Arial">CSV + report + plot</text>
   <line
      x1="1785"
      y1="120"
@@ -1388,7 +1398,8 @@
      y="1785"
      text-anchor="middle"
      class="msg"
-     id="text119">RecordingRunResult -&gt; CSV + report_text</text>
+     id="text119"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:11px;line-height:normal;font-family:Arial">RecordingRunResult -&gt; CSV + report + plot</text>
   <path
      d="M1785 1831 L510 1831"
      class="ret"
@@ -1464,4 +1475,11 @@
      style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:10px;line-height:normal;font-family:Arial;stroke-width:7.54852"><tspan
        id="tspan126"
        style="font-size:18.6667px">Solid arrows show actions/data flow; dashed arrows (not optional) show results. - S28-S34 show the first stored measurement and START confirmation. S35-S38 repeats until STOP.</tspan></text>
+  <text
+     x="28.254297"
+     y="16.249134"
+     text-anchor="middle"
+     class="sub"
+     id="text1"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:10px;line-height:normal;font-family:Arial">@v0.1.3</text>
 </svg>

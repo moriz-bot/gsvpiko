@@ -20,9 +20,9 @@
      inkscape:pageopacity="0.0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
-     inkscape:zoom="0.735"
-     inkscape:cx="456.46259"
-     inkscape:cy="368.02721"
+     inkscape:zoom="2.94"
+     inkscape:cx="129.93197"
+     inkscape:cy="61.734694"
      inkscape:window-width="1920"
      inkscape:window-height="974"
      inkscape:window-x="-11"
@@ -87,6 +87,16 @@
          id="path2" />
     </marker>
   </defs>
+  <rect
+     x="4.2854609e-14"
+     y="0"
+     width="1000"
+     height="1410"
+     class="box"
+     fill="#e8daef"
+     id="rect1"
+     style="fill:#ffffff;fill-opacity:1;stroke:none"
+     inkscape:label="Background" />
   <text
      x="458"
      y="42"
@@ -928,4 +938,15 @@
      class="label"
      id="text85"
      style="font-style:normal;font-variant:normal;font-weight:700;font-stretch:normal;font-size:20px;line-height:normal;font-family:Arial;fill:#24221c">Hardware</text>
+  <text
+     xml:space="preserve"
+     style="font-size:13.3333px;writing-mode:lr-tb;direction:ltr;fill:#ffffff;stroke-dasharray:2.4, 3.6"
+     x="9.6938772"
+     y="17.353197"
+     id="text1"><tspan
+       sodipodi:role="line"
+       id="tspan1"
+       x="9.6938772"
+       y="17.353197"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:13.3333px;font-family:Arial;-inkscape-font-specification:Arial;fill:#666666">@v0.1.2</tspan></text>
 </svg>

@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import socket
 
+from ._cli_options import print_cli_options
+
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 5050
 DEFAULT_TIMEOUT_S = 180.0
@@ -19,6 +21,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--timeout-s", type=float, default=DEFAULT_TIMEOUT_S)
     args = parser.parse_args()
+    print_cli_options(parser, args)
 
     with socket.create_connection((args.host, args.port), timeout=args.timeout_s) as socket_connection:
         socket_connection.settimeout(args.timeout_s)

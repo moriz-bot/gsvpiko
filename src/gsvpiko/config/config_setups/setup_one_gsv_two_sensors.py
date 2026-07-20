@@ -48,8 +48,8 @@ SETUP = {
     "zero_before_recording": True,
 
     "output": {
-        "directory_csv": "data",
-        "directory_report": "logs",
+        "directory_csv": "gsvpiko_data",
+        "directory_report": "gsvpiko_logs",
         "csv_decimal_separator": ".",
         "csv_delimiter": ",",
         "csv_encoding": "utf-8",
@@ -58,7 +58,7 @@ SETUP = {
             "{timestamp}_{session_name}__{setup_name}_{sample_rate_hz:g}Hz.csv"
         ),
         "include_metadata_header": True,
-        "time_columns": ["datetime_iso", "elapsed_s"],
+        "time_columns": ["datetime_iso", "timestamp_unix_s", "elapsed_s"],
         "write_report_with_csv": True,
     },
 

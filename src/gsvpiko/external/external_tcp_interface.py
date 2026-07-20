@@ -8,22 +8,6 @@ from threading import Event, Thread
 from typing import Any
 
 from ..config import config_setups as SETUP
-from ..coordination.coordination_csv import (
-    RecordingFileContext,
-    build_recording_file_context,
-    read_csv_preview,
-    write_recording_csv,
-)
-from ..coordination.coordination_recording import (
-    PreparedRecordingSession,
-    close_prepared_recording_session,
-    prepare_recording_session,
-    record_prepared_session_until_stopped,
-)
-from ..coordination.coordination_report import (
-    format_recording_report,
-    write_recording_report,
-)
 from ..coordination.coordination_diagnostics import (
     DEFAULT_HISTORY_WINDOW_H,
     VALUE_ERROR_HISTORY_INDICES,
@@ -32,39 +16,62 @@ from ..coordination.coordination_diagnostics import (
     format_connection_diagnostics_token,
     format_error_diagnostics_token,
 )
+from ..coordination.coordination_recording import (
+    PreparedRecordingSession,
+    close_prepared_recording_session,
+    prepare_recording_session,
+    record_prepared_session_until_stopped,
+)
 from ..coordination.coordination_setup_resolution import resolve_setup
 from ..coordination.coordination_setup_validation import (
     evaluate_setup_validation_status,
     format_setup_validation_token,
 )
-from .external_ascii_protocol import ExternalCommand, err, ok, parse_bool, parse_command
+from ..output.output_csv import (
+    RecordingFileContext,
+    build_recording_file_context,
+    read_csv_preview,
+    write_recording_csv,
+)
+from ..output.output_paths import (
+    format_output_directories_lines,
+    reset_persistent_output_paths,
+    resolve_output_directories,
+    set_persistent_output_path,
+)
+from ..output.output_plot import plot_gsvpiko_csv
+from ..output.output_report import format_recording_report, write_recording_report
+from .external_ascii_protocol import ExternalCommand, err, ok, parse_command
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 5050
-DEFAULT_SETUP_KEY = "TWO_GSVS_ONE_SENSOR_EACH"
+DEFAULT_SETUP_KEY = "TWO_GSVS_TWO_SENSORS_EACH"
 
 HELP_TEXT = (
     "OK HELP "
     "PING: check connection and protocol info; "
     "ECHO <text>: return text for client/debug tests; "
     "HELP: list commands; "
-    "STATUS?: show interface state and selected setup; "
+    "STATUS: show interface state and selected setup; "
+    "PATH: show active output folders; "
+    "PATH SET DATA <dir>: set persistent CSV/plot output folder; "
+    "PATH SET LOGS <dir>: set persistent report output folder; "
+    "PATH RESET: reset persistent output folders; "
     "SETUP LIST: list available setup keys; "
-    "SETUP?: show selected setup; "
+    "SETUP: show selected setup; "
     "SETUP USE <setup_key>: select setup; "
     "TARE or SET_ZERO: run SetZero on prepared devices, also during RECORDING; "
-    "RECORD session=<name> zero=true|false or RECORD <name> <true|false>: prepare recording session; "
+    "RECORD <session_name> or RECORD session=<name>: prepare recording session; "
     "START: start prepared recording; "
-    "STOP: stop recording and write CSV/report; "
-    "CSV?: show compact CSV preview; "
-    "CSV PATH?: show last CSV path; "
-    "REPORT?: show compact last report text; "
-    "REPORT PATH?: show last report path; "
+    "STOP: stop recording and write CSV/report/plot; "
+    "CSV: show compact CSV preview; "
+    "CSV PATH: show last CSV path; "
+    "REPORT: show compact last report text; "
+    "REPORT PATH: show last report path; "
     "DIAG CONNECTION: check non-mutating current connection paths in IDLE state; "
     "DIAG ERRORS or DIAG ERROR: read non-destructive GSV admin/error diagnostics in IDLE state; "
     "QUIT: close connection; if RECORDING, stop and save first"
 )
-
 
 
 @dataclass
@@ -78,9 +85,9 @@ class ExternalTcpInterfaceState:
     recording_error: BaseException | None = None
     recording_result: Any | None = None
     session_name: str | None = None
-    zero_before_recording: bool = True
     file_context: RecordingFileContext | None = None
     report_text: str | None = None
+    graph_path: object | None = None
 
     @property
     def setup_config(self) -> dict[str, Any]:
@@ -89,7 +96,7 @@ class ExternalTcpInterfaceState:
 
     @property
     def state_name(self) -> str:
-        """Return a compact state name for STATUS?."""
+        """Return a compact state name for STATUS."""
         if self.recording_thread is not None and self.recording_thread.is_alive():
             return "RECORDING"
         if self.prepared_session is not None:
@@ -108,8 +115,6 @@ def run_server(
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_socket.bind((host, int(port)))
         server_socket.listen(1)
-        # A finite accept timeout keeps the process responsive to Ctrl+C on
-        # platforms where a blocking accept() call is slow to interrupt.
         server_socket.settimeout(0.5)
         print(f"GSVpiko external TCP interface listening on {host}:{port}")
         print("Stop the server app with Ctrl+C in this terminal.")
@@ -141,8 +146,6 @@ def _serve_connection(connection: socket.socket, *, stop_event: Event) -> None:
     """Serve one TCP client until QUIT, Ctrl+C, or disconnect."""
     state = ExternalTcpInterfaceState()
     buffer = b""
-    # Do not block indefinitely in recv(). The timeout allows the server stop
-    # event and Ctrl+C to be observed even while a client keeps the socket open.
     connection.settimeout(0.5)
     try:
         while not stop_event.is_set():
@@ -189,16 +192,23 @@ def handle_command(line: str, state: ExternalTcpInterfaceState) -> str:
             return ok("ECHO", text=_echo_text(command.raw))
         if command.name == "HELP":
             return HELP_TEXT
-        if command.name == "STATUS?":
+        if command.name == "STATUS":
             return ok(
                 "STATUS",
                 state=state.state_name,
                 setup=state.setup_key,
                 validation=_setup_validation(state.setup_key),
+                csv_path=state.file_context.csv_path if state.file_context else None,
+                report_path=state.file_context.report_path if state.file_context else None,
+                graph_path=state.graph_path,
             )
+        if command.name == "PATH":
+            return _handle_path(command, state)
+        if command.name in {"PATH SET", "PATH RESET"}:
+            return _handle_path(command, state)
         if command.name == "SETUP LIST":
             return ok("SETUP_LIST", setups=_setup_list_text())
-        if command.name == "SETUP?":
+        if command.name == "SETUP":
             return ok(
                 "SETUP",
                 current=state.setup_key,
@@ -214,15 +224,15 @@ def handle_command(line: str, state: ExternalTcpInterfaceState) -> str:
             return _handle_start(state)
         if command.name == "STOP":
             return _handle_stop(state)
-        if command.name == "CSV?":
+        if command.name == "CSV":
             return _handle_csv_preview(state)
-        if command.name == "CSV PATH?":
+        if command.name == "CSV PATH":
             return _path_response("CSV_PATH", state.file_context.csv_path if state.file_context else None)
-        if command.name == "REPORT?":
+        if command.name == "REPORT":
             if state.report_text is None:
                 return err("NO_REPORT")
             return ok("REPORT", text=state.report_text)
-        if command.name == "REPORT PATH?":
+        if command.name == "REPORT PATH":
             return _path_response("REPORT_PATH", state.file_context.report_path if state.file_context else None)
         if command.name == "DIAG CONNECTION":
             return _handle_diag_connection(state)
@@ -233,7 +243,6 @@ def handle_command(line: str, state: ExternalTcpInterfaceState) -> str:
         return err("UNKNOWN_COMMAND", command=command.raw)
     except Exception as error:
         return err("COMMAND_FAILED", error=error)
-
 
 
 def _echo_text(raw_command_line: str) -> str:
@@ -283,8 +292,39 @@ def _setup_response_fields(setup_key: str) -> dict[str, object]:
     }
 
 
+def _handle_path(command: ExternalCommand, state: ExternalTcpInterfaceState) -> str:
+    """Show, set, or reset persistent output paths."""
+    if state.state_name != "IDLE" and command.name != "PATH":
+        return err("BUSY", command=command.name, state=state.state_name, allowed_state="IDLE")
+    if command.name == "PATH RESET":
+        directories = reset_persistent_output_paths()
+        return _output_paths_response("PATH_RESET", directories)
+    if command.name == "PATH SET":
+        if len(command.args) < 2:
+            return err("INVALID_PATH_SYNTAX", usage="PATH SET DATA <dir> or PATH SET LOGS <dir>")
+        kind = command.args[0]
+        directory = " ".join(command.args[1:])
+        directories = set_persistent_output_path(kind, directory)
+        return _output_paths_response("PATH_SET", directories)
+    if command.args or command.options:
+        return err("INVALID_PATH_SYNTAX", usage="PATH, PATH SET DATA <dir>, PATH SET LOGS <dir>, PATH RESET")
+    return _output_paths_response("PATH", resolve_output_directories())
+
+
+def _output_paths_response(message: str, directories: object) -> str:
+    """Return output path fields for external responses."""
+    return ok(
+        message,
+        data_dir=getattr(directories, "data_dir", None),
+        log_dir=getattr(directories, "log_dir", None),
+        settings_path=getattr(directories, "settings_path", None),
+    )
+
+
 def _handle_setup_use(command: ExternalCommand, state: ExternalTcpInterfaceState) -> str:
     """Switch the selected setup key."""
+    if state.state_name != "IDLE":
+        return err("BUSY", command="SETUP USE", state=state.state_name, allowed_state="IDLE")
     if not command.args:
         return err("MISSING_SETUP_KEY")
     setup_key = _normalize_setup_key(command.args[0])
@@ -373,10 +413,6 @@ def _handle_quit(state: ExternalTcpInterfaceState) -> str:
     if not stop_response.startswith("OK RECORDING_STOPPED"):
         return stop_response
 
-    # QUIT is a client-session command. When it is sent during RECORDING, the
-    # safest behavior is to reuse the normal STOP path first so CSV/report data
-    # are written before the socket is closed. Keep the CSV/report fields from
-    # STOP, but make the command outcome explicit as BYE.
     return stop_response.replace(
         "OK RECORDING_STOPPED",
         "OK BYE recording_stopped=True",
@@ -409,24 +445,22 @@ def _handle_record(command: ExternalCommand, state: ExternalTcpInterfaceState) -
     """Prepare a new recording session without starting transmission."""
     if state.state_name == "RECORDING":
         return err("BUSY")
+    invalid_options = sorted(key for key in command.options if key not in {"session", "session_name"})
+    if invalid_options or len(command.args) > 1:
+        return err("INVALID_RECORD_SYNTAX", usage="RECORD <session_name> or RECORD session=<name>")
     _cleanup_state(state)
     session_name = _record_session_name(command)
     if not session_name:
         return err("MISSING_SESSION_NAME")
     resolved_setup = resolve_setup(state.setup_config)
-    zero_before_recording = _record_zero_before_recording(
-        command,
-        default=resolved_setup.zero_before_recording,
-    )
     prepared = prepare_recording_session(
         setup_config=state.setup_config,
         resolved_setup=resolved_setup,
         session_name=session_name,
-        zero_before_recording=zero_before_recording,
+        zero_before_recording=None,
     )
     state.prepared_session = prepared
     state.session_name = session_name
-    state.zero_before_recording = zero_before_recording
     if not prepared.can_start_transmission:
         warnings = _blocking_warnings_text(prepared)
         close_prepared_recording_session(prepared)
@@ -441,9 +475,8 @@ def _handle_record(command: ExternalCommand, state: ExternalTcpInterfaceState) -
         "RECORD_READY",
         session=session_name,
         **_setup_response_fields(state.setup_key),
-        zero=zero_before_recording,
+        zero=prepared.zero_before_recording,
     )
-
 
 
 def _blocking_warnings_text(prepared: PreparedRecordingSession) -> str:
@@ -467,6 +500,7 @@ def _blocking_warnings_text(prepared: PreparedRecordingSession) -> str:
                 tokens.append(f"{alias}:{key}:{detail}")
     return ",".join(tokens) or "<none>"
 
+
 def _record_session_name(command: ExternalCommand) -> str | None:
     """Return session name from key-value or shorthand RECORD syntax."""
     return (
@@ -474,19 +508,6 @@ def _record_session_name(command: ExternalCommand) -> str | None:
         or command.options.get("session_name")
         or (command.args[0] if command.args else None)
     )
-
-
-def _record_zero_before_recording(
-    command: ExternalCommand,
-    *,
-    default: bool,
-) -> bool:
-    """Return zero-before-recording from key-value or shorthand RECORD syntax."""
-    if "zero" in command.options:
-        return parse_bool(command.options.get("zero"), default=default)
-    if len(command.args) >= 2:
-        return parse_bool(command.args[1], default=default)
-    return bool(default)
 
 
 def _handle_start(state: ExternalTcpInterfaceState) -> str:
@@ -529,7 +550,7 @@ def _handle_start(state: ExternalTcpInterfaceState) -> str:
 
 
 def _handle_stop(state: ExternalTcpInterfaceState) -> str:
-    """Stop the active recording and write CSV/report output."""
+    """Stop the active recording and write CSV/report/plot output."""
     if state.recording_thread is None or state.stop_event is None:
         return err("NOT_RECORDING")
     state.stop_event.set()
@@ -547,15 +568,19 @@ def _handle_stop(state: ExternalTcpInterfaceState) -> str:
     write_recording_csv(
         recording_result=run_result,
         file_context=state.file_context,
-        zero_before_recording=state.zero_before_recording,
+        zero_before_recording=state.prepared_session.zero_before_recording,
     )
     state.report_text = format_recording_report(
         recording_result=run_result,
         session_name=state.session_name or "session",
         file_context=state.file_context,
-        zero_before_recording=state.zero_before_recording,
+        zero_before_recording=state.prepared_session.zero_before_recording,
     )
     write_recording_report(report_text=state.report_text, file_context=state.file_context)
+    state.graph_path = plot_gsvpiko_csv(
+        state.file_context.csv_path,
+        output_path=state.file_context.graph_path,
+    )
     close_prepared_recording_session(state.prepared_session)
     state.prepared_session = None
     state.recording_thread = None
@@ -564,6 +589,7 @@ def _handle_stop(state: ExternalTcpInterfaceState) -> str:
         "RECORDING_STOPPED",
         csv_path=state.file_context.csv_path,
         report_path=state.file_context.report_path,
+        graph_path=state.graph_path,
     )
 
 

@@ -14,7 +14,7 @@ from ..coordination.coordination_diagnostics import (
     diagnose_setup_errors,
     format_device_status_error_report_lines,
 )
-from ..coordination.coordination_report_print import format_title_lines
+from ..output.output_report_print import format_title_lines
 from ._setup_selection import DEFAULT_SETUP_KEY, add_setup_argument, get_setup_config
 
 SETUP_KEY = DEFAULT_SETUP_KEY

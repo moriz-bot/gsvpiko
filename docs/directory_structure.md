@@ -1,6 +1,6 @@
 # GSVpiko – Directory Structure
 
-This is the intended repository structure for the current package-oriented state.
+This is the intended repository structure for the current package-oriented state @v0.1.3.
 Planned but unavailable parts are marked with `not implemented`.
 
 ## Project tree
@@ -12,15 +12,11 @@ GSVpiko/
 ├── README.md
 ├── pyproject.toml
 │
-├── data/                   # local measurement CSV/PNG output, not tracked
-│
 ├── docs/
 │   ├── directory_structure.md
 │   ├── layered_architecture.svg
 │   ├── module_alias_convention.md
 │   └── sequence_diagram_recording_example.svg
-│
-├── logs/                    # local diagnostic and recording logs, not tracked
 │
 ├── references/
 │   ├── GSV-ProtocolDefinition.pdf
@@ -88,11 +84,8 @@ GSVpiko/
 │       │
 │       ├── coordination/
 │       │   ├── __init__.py
-│       │   ├── coordination_csv.py
 │       │   ├── coordination_diagnostics.py
 │       │   ├── coordination_recording.py
-│       │   ├── coordination_report.py
-│       │   ├── coordination_report_print.py
 │       │   ├── coordination_sample_rate_limit.py
 │       │   ├── coordination_sensor_validation.py
 │       │   ├── coordination_setup_application.py
@@ -109,10 +102,12 @@ GSVpiko/
 │       │   └── device_report.py
 │       │
 │       ├── external/
+│       │   ├── __init__.py
 │       │   ├── external_ascii_protocol.py
 │       │   └── external_tcp_interface.py
 │       │
 │       ├── features/
+│       │   ├── __init__.py
 │       │   ├── feature_acquisition.py
 │       │   ├── feature_admin.py
 │       │   ├── feature_filters.py
@@ -127,6 +122,14 @@ GSVpiko/
 │       │   # feature_logger.py               # not implemented
 │       │   # feature_output.py               # not implemented
 │       │   # feature_teds.py                 # not implemented
+│       │
+│       ├── output/
+│       │   ├── __init__.py
+│       │   ├── output_csv.py
+│       │   ├── output_paths.py
+│       │   ├── output_plot.py
+│       │   ├── output_report.py
+│       │   └── output_report_print.py
 │       │
 │       ├── protocol/
 │       │   ├── __init__.py
@@ -154,8 +157,6 @@ GSVpiko/
 │       └── utils/
 │           ├── __init__.py
 │           └── utils_hex.py
-│           # utils_logging.py               # not implemented
-│           # utils_time.py                  # not implemented
 │
 └── tests/                                  # not implemented
 ```
@@ -163,8 +164,7 @@ GSVpiko/
 ## Runtime output
 
 ```text
-data/                                  # local measurement CSV/PNG output, not tracked
-logs/                                  # local diagnostic and recording logs, not tracked
+gsvpiko_data/                                  # local measurement CSV/PNG output, not tracked
+gsvpiko_logs/                                  # local diagnostic and recording logs, not tracked
 ```
-
 

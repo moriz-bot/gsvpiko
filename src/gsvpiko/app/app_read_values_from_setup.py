@@ -6,7 +6,7 @@ import argparse
 
 from ._cli_options import print_cli_options
 
-from ..coordination.coordination_report_print import (
+from ..output.output_report_print import (
     format_sample_rate_limit_lines,
     format_setup_application_warning_lines,
     format_setup_metadata_block_lines,

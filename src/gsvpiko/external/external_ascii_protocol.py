@@ -23,9 +23,11 @@ def parse_command(line: str) -> ExternalCommand:
     if not parts:
         return ExternalCommand(name="", raw=raw)
 
-    name_parts = [parts[0].upper()]
+    first = parts[0].upper()
+    name_parts = [first]
     index = 1
-    if index < len(parts) and parts[index].upper() in {"LIST", "USE", "PATH?", "CONNECTION", "ERRORS", "ERROR"}:
+    second_command_words = _second_command_words(first)
+    if index < len(parts) and parts[index].upper() in second_command_words:
         name_parts.append(parts[index].upper())
         index += 1
 
@@ -46,19 +48,17 @@ def parse_command(line: str) -> ExternalCommand:
     )
 
 
-def parse_bool(value: str, *, default: bool | None = None) -> bool:
-    """Parse a protocol boolean value."""
-    if value is None:
-        if default is None:
-            raise ValueError("Boolean value is missing.")
-        return default
-
-    normalized = str(value).strip().lower()
-    if normalized in {"1", "true", "yes", "on"}:
-        return True
-    if normalized in {"0", "false", "no", "off"}:
-        return False
-    raise ValueError(f"Invalid boolean value {value!r}.")
+def _second_command_words(first: str) -> set[str]:
+    """Return allowed second command words for a first command token."""
+    if first == "SETUP":
+        return {"LIST", "USE"}
+    if first == "PATH":
+        return {"SET", "RESET"}
+    if first in {"CSV", "REPORT"}:
+        return {"PATH"}
+    if first == "DIAG":
+        return {"CONNECTION", "ERRORS", "ERROR"}
+    return set()
 
 
 def ok(message: str, **fields: object) -> str:

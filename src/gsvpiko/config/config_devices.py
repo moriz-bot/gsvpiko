@@ -6,7 +6,7 @@ GSV_24456057 = {
     "model_name": "GSV-8DS SubD44HD",
     "gsv_serial_number": 24456057,
 
-    "default_connection_type": "serial",  # "serial" or "tcp"
+    "default_connection_type": "tcp",  # "serial" or "tcp"
     "default_serial_interface": "uart",
     "default_use_nport": True,
     "default_configure_nport": True,
@@ -31,7 +31,7 @@ GSV_24456060 = {
     "model_name": "GSV-8DS SubD44HD",
     "gsv_serial_number": 24456060,
 
-    "default_connection_type": "serial",  # "serial" or "tcp"
+    "default_connection_type": "tcp",  # "serial" or "tcp"
     "default_serial_interface": "uart",
     "default_use_nport": True,
     "default_configure_nport": True,
@@ -56,7 +56,7 @@ GSV_24456058 = {
     "model_name": "GSV-8DS SubD44HD",
     "gsv_serial_number": 24456058,
 
-    "default_connection_type": "serial",  # "serial" or "tcp"
+    "default_connection_type": "tcp",  # "serial" or "tcp"
     "default_serial_interface": "uart",
     "default_use_nport": True,
     "default_configure_nport": True,

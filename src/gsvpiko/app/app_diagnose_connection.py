@@ -7,7 +7,7 @@ import argparse
 from ._cli_options import print_cli_options
 
 from ..coordination.coordination_diagnostics import diagnose_setup_connection
-from ..coordination.coordination_report_print import (
+from ..output.output_report_print import (
     format_connection_diagnostic_lines,
     format_title_lines,
 )

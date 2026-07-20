@@ -110,8 +110,8 @@ SETUP = {
     "zero_before_recording": True,
 
     "output": {
-        "directory_csv": "data",  # CSV measurement files.
-        "directory_report": "logs",  # Text reports matching CSV sessions.
+        "directory_csv": "gsvpiko_data",  # CSV measurement files.
+        "directory_report": "gsvpiko_logs",  # Text reports matching CSV sessions.
         "csv_decimal_separator": ".",  # supported: "." or ","; must differ from csv_delimiter
         "csv_delimiter": ",",  # supported: ",", ";", or "\t"; use ";" when decimal separator is ","
         "csv_encoding": "utf-8",  # Text encoding used for CSV and report files.
@@ -122,7 +122,7 @@ SETUP = {
         # supported filename placeholders: timestamp, session_name, setup_name, sample_rate_hz, datatype
         "include_metadata_header": True,  # Write setup/channel metadata as # comment lines.
         # supported: "datetime_iso", "timestamp_unix_s", "elapsed_s"
-        "time_columns": ["datetime_iso", "elapsed_s"],
+        "time_columns": ["datetime_iso", "timestamp_unix_s", "elapsed_s"],
         "write_report_with_csv": True,  # Write a matching report file for each CSV recording.
     },
 }

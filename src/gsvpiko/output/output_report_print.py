@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from .coordination_sample_rate_limit import format_sample_rate_limit_warning
-from .coordination_setup_resolution import (
+from ..coordination.coordination_sample_rate_limit import format_sample_rate_limit_warning
+from ..coordination.coordination_setup_resolution import (
     ResolvedSetup,
     build_setup_metadata_lines,
 )
@@ -135,7 +135,7 @@ def format_setup_application_warning_lines(
     warnings: Iterable[dict[str, Any]],
 ) -> list[str]:
     """Return setup-application warnings and suggested action lines."""
-    from .coordination_setup_application import (
+    from ..coordination.coordination_setup_application import (
         format_setup_application_warning,
         setup_application_warning_action_text,
     )

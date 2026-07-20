@@ -1,4 +1,4 @@
-"""CSV output coordination for resolved setup runtime recordings."""
+"""CSV output helpers for resolved setup runtime recordings."""
 
 from __future__ import annotations
 
@@ -11,8 +11,9 @@ import re
 from typing import Any
 
 from ..runtime.runtime_measurement_buffer import RuntimeMeasurementRecord
-from .coordination_recording import RecordingRunResult
-from .coordination_setup_resolution import ResolvedChannel, ResolvedSetup
+from ..coordination.coordination_recording import RecordingRunResult
+from ..coordination.coordination_setup_resolution import ResolvedChannel, ResolvedSetup
+from .output_paths import resolve_output_directories
 
 FILENAME_SAFE_RE = re.compile(r"[^A-Za-z0-9_.-]+")
 
@@ -26,6 +27,7 @@ class RecordingFileContext:
     timestamp_text: str
     csv_path: Path
     report_path: Path
+    graph_path: Path
 
 
 def build_recording_file_context(
@@ -55,14 +57,20 @@ def build_recording_file_context(
         filename = f"{filename}.csv"
 
     session_id = Path(filename).stem
-    csv_path = Path(str(output["directory_csv"])) / filename
-    report_path = Path(str(output["directory_report"])) / f"{session_id}_report.txt"
+    output_dirs = resolve_output_directories(
+        data_dir=output.get("directory_csv"),
+        log_dir=output.get("directory_report"),
+    )
+    csv_path = output_dirs.data_dir / filename
+    report_path = output_dirs.log_dir / f"{session_id}_report.txt"
+    graph_path = output_dirs.data_dir / f"{session_id}.png"
     return RecordingFileContext(
         session_name=cleaned_session_name,
         session_id=session_id,
         timestamp_text=timestamp_text,
         csv_path=csv_path,
         report_path=report_path,
+        graph_path=graph_path,
     )
 
 

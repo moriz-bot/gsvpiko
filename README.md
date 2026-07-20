@@ -43,7 +43,7 @@ py -m pip install "gsvpiko @ git+https://github.com/moriz-bot/gsvpiko.git"
 Install a specific tagged version:
 
 ```powershell
-py -m pip install "gsvpiko @ git+https://github.com/moriz-bot/gsvpiko.git@v0.1.2"
+py -m pip install "gsvpiko @ git+https://github.com/moriz-bot/gsvpiko.git@v0.1.3"
 ```
 
 ### Local checkout
@@ -83,12 +83,14 @@ py -c "from importlib.metadata import version; print(version('gsvpiko'))"
 - real device, sensor and setup configuration files
 - sensor scaling and software-side crosstalk compensation
 - reading and recording measurement values
-- CSV and text-report generation
+- CSV, text-report and PNG plot generation
+- event markers in plots for GSVpiko runtime commands such as `tare`
 - setup validation before measurement
 - connection, runtime-rate and GSV status diagnostics
 - external TCP control interface with a simple ASCII command protocol
 - manual TCP client for testing the external control interface
-- CSV plotting helper
+- local interactive recording shell via `gsvpiko-record-values`
+- CSV plotting helper via `gsvpiko-plot-csv`
 - NPort mode switching via `transport_nport`  
   → no NPort Administrator required for the supported Real COM/TCP workflow
 - baudrate probing  
@@ -110,6 +112,23 @@ NPort TCP Server Mode → GSVpiko transport: tcp
 ```
 
 `transport_nport` can switch the NPort operating mode automatically. This is especially useful when moving between serial-style access and direct TCP access without manually changing the NPort configuration in a separate administration tool.
+
+## Output folders
+
+Default runtime output is written relative to the current working directory:
+
+```text
+gsvpiko_data/     CSV files and PNG plots
+gsvpiko_logs/     text reports
+```
+
+The recording app supports process-local overrides:
+
+```powershell
+gsvpiko-record-values --data-dir C:\Measurements\GSVpikoData --log-dir C:\Measurements\GSVpikoLogs
+```
+
+The local recording shell and the external TCP interface also support persistent output folders through their `path` command. Persistent settings are stored in the current user's GSVpiko settings file.
 
 ## Baudrate probing
 
@@ -161,15 +180,8 @@ On the tested hardware, this status can still occur on the affected GSV device a
 It was observed even after setting the analog outputs inactive through `SetAOutType`-style configuration values:
 
 ```text
-AOutType_Mode = 0x02
-AOutType_Enum = 0
-```
-
-and also with:
-
-```text
-AOutType_Mode = 0x02
-AOutType_Enum = 5
+AOutType_Mode = 0x02  (inactive)
+AOutType_Enum = 5     (OFF)
 ```
 
 In the observed setup, this analog-output hardware status did not prevent measurement output or recording.
@@ -180,6 +192,8 @@ In the observed setup, this analog-output hardware status did not prevent measur
 src/gsvpiko/       Python package source code
 docs/              project documentation and diagrams
 references/        public reference documents used during development
+gsvpiko_data/      local runtime CSV and plot output, not committed
+gsvpiko_logs/      local runtime report output, not committed
 README.md          project overview and installation notes
 pyproject.toml     Python packaging metadata
 LICENSE            license file
@@ -188,15 +202,17 @@ LICENSE            license file
 Important package areas:
 
 ```text
-app/               command-line entry points
+app/               command-line entry points and local interactive apps
 config/            device, sensor and setup configuration
-coordination/      setup resolution, validation, recording and reporting logic
+coordination/      setup resolution, validation, diagnostics and recording orchestration
 device/            GSV device abstraction
 external/          external TCP control interface
 features/          GSV feature groups
+output/            CSV, report, plot and output-path handling
 protocol/          frame building, parsing, payload coding and CRC
 runtime/           runtime reading, routing and buffering
 transport/         serial, TCP and NPort transport handling
+utils/             small generic helpers
 ```
 
 ## Basic command examples

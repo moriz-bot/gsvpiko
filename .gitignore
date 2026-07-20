@@ -19,6 +19,8 @@ dist/
 # Local runtime output
 data/
 logs/
+gsvpiko_data/
+gsvpiko_logs/
 
 
 # Local editor and OS files

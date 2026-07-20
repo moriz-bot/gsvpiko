@@ -8,9 +8,9 @@ from typing import Any
 from ..device.device_connection import BaudrateProbeResult
 from ..runtime.runtime_report import format_runtime_summary
 from ..transport import transport_nport as NPORT
-from .coordination_recording import RecordingRunResult
-from .coordination_setup_application import format_setup_application_warning
-from .coordination_csv import RecordingFileContext
+from ..coordination.coordination_recording import RecordingRunResult
+from ..coordination.coordination_setup_application import format_setup_application_warning
+from .output_csv import RecordingFileContext
 
 
 def format_probe_result(
@@ -114,6 +114,7 @@ def _format_session_lines(
                 f"session_id: {file_context.session_id}",
                 f"csv_path: {file_context.csv_path}",
                 f"report_path: {file_context.report_path}",
+                f"graph_path: {file_context.graph_path}",
             ]
         )
     return lines

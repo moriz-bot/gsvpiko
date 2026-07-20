@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 
+from ._cli_options import print_cli_options
 from ..external.external_tcp_interface import DEFAULT_HOST, DEFAULT_PORT, run_server
 
 
@@ -13,6 +14,7 @@ def main() -> None:
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     args = parser.parse_args()
+    print_cli_options(parser, args)
     run_server(host=args.host, port=args.port)
 
 

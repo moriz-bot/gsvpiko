@@ -7,7 +7,7 @@ from threading import Event, Thread
 from typing import Any
 
 from ..config import config_setups as SETUP
-from ..coordination.coordination_csv import (
+from ..output.output_csv import (
     build_recording_file_context,
     write_recording_csv,
 )
@@ -17,7 +17,7 @@ from ..coordination.coordination_recording import (
     prepare_recording_session,
     record_prepared_session_until_stopped,
 )
-from ..coordination.coordination_report import (
+from ..output.output_report import (
     format_recording_report,
     write_recording_report,
 )

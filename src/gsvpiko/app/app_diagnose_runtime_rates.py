@@ -9,7 +9,7 @@ from copy import deepcopy
 
 from ..config import config_setups as SETUP
 from ..coordination.coordination_recording import record_setup_frames
-from ..coordination.coordination_report_print import (
+from ..output.output_report_print import (
     format_runtime_device_result_lines,
     format_sample_rate_limit_lines,
     format_setup_application_warning_lines,
