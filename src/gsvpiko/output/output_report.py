@@ -231,12 +231,31 @@ def _format_command_reports(runtime_result: Any) -> list[str]:
             else:
                 lines.append(f"  {report['device_alias']}: ok=False error={report['error']}")
 
+    session_command_lines = _format_session_command_reports(runtime_result)
+    if session_command_lines:
+        lines.append("Session command reports")
+        lines.extend(session_command_lines)
+
     runtime_command_lines = _format_runtime_routed_command_reports(runtime_result)
     if runtime_command_lines:
         lines.append("Runtime command reports")
         lines.extend(runtime_command_lines)
 
     return lines or ["<none>"]
+
+
+def _format_session_command_reports(runtime_result: Any) -> list[str]:
+    """Return session-level command reports used for CSV event markers."""
+    lines: list[str] = []
+    for report in runtime_result.events.get("command_reports", []):
+        lines.append(
+            "  "
+            f"command={report.get('command_name')} "
+            f"group={report.get('command_group_id')} "
+            f"started_at_unix_s={float(report.get('started_at_unix_s') or 0.0):.6f} "
+            f"ok={report.get('ok')}"
+        )
+    return lines
 
 
 def _format_runtime_routed_command_reports(runtime_result: Any) -> list[str]:

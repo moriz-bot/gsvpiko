@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gsvpiko"
-version = "0.1.3"
+version = "0.1.4"
 description = "Python control, recording and diagnostics tools for ME GSV-8 measurement amplifiers."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -39,7 +39,7 @@ gsvpiko-diagnose-runtime-rates = "gsvpiko.app.app_diagnose_runtime_rates:main"
 gsvpiko-external-tcp-interface = "gsvpiko.app.app_external_tcp_interface:main"
 gsvpiko-plot-csv = "gsvpiko.app.plot_gsvpiko_csv:main"
 gsvpiko-read-values = "gsvpiko.app.app_read_values_from_setup:main"
-gsvpiko-record-values = "gsvpiko.app.app_record_values_from_setup:main"
+gsvpiko-record = "gsvpiko.app.app_record:main"
 gsvpiko-setup-application = "gsvpiko.app.app_setup_application:main"
 gsvpiko-setup-validation = "gsvpiko.app.app_setup_validation:main"
 

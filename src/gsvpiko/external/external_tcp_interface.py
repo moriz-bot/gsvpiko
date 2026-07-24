@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import socket
-from threading import Event, Thread
+from threading import Event, RLock, Thread
 from typing import Any
 
 from ..config import config_setups as SETUP
@@ -20,7 +20,7 @@ from ..coordination.coordination_recording import (
     PreparedRecordingSession,
     close_prepared_recording_session,
     prepare_recording_session,
-    record_prepared_session_until_stopped,
+    start_prepared_continuous_session,
 )
 from ..coordination.coordination_setup_resolution import resolve_setup
 from ..coordination.coordination_setup_validation import (
@@ -34,13 +34,14 @@ from ..output.output_csv import (
     write_recording_csv,
 )
 from ..output.output_paths import (
-    format_output_directories_lines,
     reset_persistent_output_paths,
     resolve_output_directories,
     set_persistent_output_path,
 )
 from ..output.output_plot import plot_gsvpiko_csv
 from ..output.output_report import format_recording_report, write_recording_report
+from ..runtime.runtime_session import ContinuousRuntimeSession, run_runtime_set_zero_cycle_concurrently
+from ..utils.utils_duration import parse_optional_duration
 from .external_ascii_protocol import ExternalCommand, err, ok, parse_command
 
 DEFAULT_HOST = "0.0.0.0"
@@ -60,17 +61,19 @@ HELP_TEXT = (
     "SETUP LIST: list available setup keys; "
     "SETUP: show selected setup; "
     "SETUP USE <setup_key>: select setup; "
-    "TARE or SET_ZERO: run SetZero on prepared devices, also during RECORDING; "
-    "RECORD <session_name> or RECORD session=<name>: prepare recording session; "
-    "START: start prepared recording; "
-    "STOP: stop recording and write CSV/report/plot; "
+    "SESSION <session_name> or SESSION session=<name>: tare if configured and start transmission; "
+    "START: start recording samples; "
+    "START 20 S or START 20S: record for a duration, then stop automatically; "
+    "STOP: pause recording while transmission continues; "
+    "TARE or SET_ZERO: run SetZero and mark the event during an active session; "
+    "SAVE: stop transmission and write CSV/report/plot; "
     "CSV: show compact CSV preview; "
     "CSV PATH: show last CSV path; "
     "REPORT: show compact last report text; "
     "REPORT PATH: show last report path; "
     "DIAG CONNECTION: check non-mutating current connection paths in IDLE state; "
     "DIAG ERRORS or DIAG ERROR: read non-destructive GSV admin/error diagnostics in IDLE state; "
-    "QUIT: close connection; if RECORDING, stop and save first"
+    "QUIT: save active session if needed and close connection"
 )
 
 
@@ -80,14 +83,14 @@ class ExternalTcpInterfaceState:
 
     setup_key: str = DEFAULT_SETUP_KEY
     prepared_session: PreparedRecordingSession | None = None
-    recording_thread: Thread | None = None
-    stop_event: Event | None = None
-    recording_error: BaseException | None = None
-    recording_result: Any | None = None
+    continuous_session: ContinuousRuntimeSession | None = None
     session_name: str | None = None
     file_context: RecordingFileContext | None = None
     report_text: str | None = None
     graph_path: object | None = None
+    capture_timer_cancel: Event | None = None
+    capture_timer_thread: Thread | None = None
+    lock: RLock = field(default_factory=RLock)
 
     @property
     def setup_config(self) -> dict[str, Any]:
@@ -97,18 +100,14 @@ class ExternalTcpInterfaceState:
     @property
     def state_name(self) -> str:
         """Return a compact state name for STATUS."""
-        if self.recording_thread is not None and self.recording_thread.is_alive():
+        if self.continuous_session is not None and self.continuous_session.is_capturing:
             return "RECORDING"
-        if self.prepared_session is not None:
-            return "READY"
+        if self.continuous_session is not None:
+            return "SESSION"
         return "IDLE"
 
 
-def run_server(
-    *,
-    host: str = DEFAULT_HOST,
-    port: int = DEFAULT_PORT,
-) -> None:
+def run_server(*, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> None:
     """Run the external TCP control server until Ctrl+C stops it."""
     stop_event = Event()
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
@@ -193,37 +192,25 @@ def handle_command(line: str, state: ExternalTcpInterfaceState) -> str:
         if command.name == "HELP":
             return HELP_TEXT
         if command.name == "STATUS":
-            return ok(
-                "STATUS",
-                state=state.state_name,
-                setup=state.setup_key,
-                validation=_setup_validation(state.setup_key),
-                csv_path=state.file_context.csv_path if state.file_context else None,
-                report_path=state.file_context.report_path if state.file_context else None,
-                graph_path=state.graph_path,
-            )
-        if command.name == "PATH":
-            return _handle_path(command, state)
-        if command.name in {"PATH SET", "PATH RESET"}:
+            return _handle_status(state)
+        if command.name in {"PATH", "PATH SET", "PATH RESET"}:
             return _handle_path(command, state)
         if command.name == "SETUP LIST":
             return ok("SETUP_LIST", setups=_setup_list_text())
         if command.name == "SETUP":
-            return ok(
-                "SETUP",
-                current=state.setup_key,
-                validation=_setup_validation(state.setup_key),
-            )
+            return ok("SETUP", current=state.setup_key, validation=_setup_validation(state.setup_key))
         if command.name == "SETUP USE":
             return _handle_setup_use(command, state)
-        if command.name in {"TARE", "SET_ZERO"}:
-            return _handle_tare(state)
-        if command.name == "RECORD":
-            return _handle_record(command, state)
+        if command.name == "SESSION":
+            return _handle_session(command, state)
         if command.name == "START":
-            return _handle_start(state)
+            return _handle_start(command, state)
         if command.name == "STOP":
             return _handle_stop(state)
+        if command.name in {"TARE", "SET_ZERO"}:
+            return _handle_tare(state)
+        if command.name == "SAVE":
+            return _handle_save(state)
         if command.name == "CSV":
             return _handle_csv_preview(state)
         if command.name == "CSV PATH":
@@ -243,6 +230,21 @@ def handle_command(line: str, state: ExternalTcpInterfaceState) -> str:
         return err("UNKNOWN_COMMAND", command=command.raw)
     except Exception as error:
         return err("COMMAND_FAILED", error=error)
+
+
+def _handle_status(state: ExternalTcpInterfaceState) -> str:
+    """Return one-line interface status."""
+    return ok(
+        "STATUS",
+        state=state.state_name,
+        setup=state.setup_key,
+        validation=_setup_validation(state.setup_key),
+        session=state.session_name,
+        capturing=state.continuous_session.is_capturing if state.continuous_session else None,
+        csv_path=state.file_context.csv_path if state.file_context else None,
+        report_path=state.file_context.report_path if state.file_context else None,
+        graph_path=state.graph_path,
+    )
 
 
 def _echo_text(raw_command_line: str) -> str:
@@ -286,10 +288,7 @@ def _setup_validation(setup_key: str) -> str:
 
 def _setup_response_fields(setup_key: str) -> dict[str, object]:
     """Return common setup fields for one-line external responses."""
-    return {
-        "setup": setup_key,
-        "validation": _setup_validation(setup_key),
-    }
+    return {"setup": setup_key, "validation": _setup_validation(setup_key)}
 
 
 def _handle_path(command: ExternalCommand, state: ExternalTcpInterfaceState) -> str:
@@ -391,11 +390,7 @@ def _diagnostics_busy_response(command_name: str, state: ExternalTcpInterfaceSta
     )
 
 
-def _format_connection_diagnostics_token_for_external(
-    results: object,
-    *,
-    setup_config: dict[str, Any],
-) -> str:
+def _format_connection_diagnostics_token_for_external(results: object, *, setup_config: dict[str, Any]) -> str:
     """Return compact connection diagnostics with setup baudrate for TCP paths."""
     token = format_connection_diagnostics_token(results)
     baudrate = setup_config.get("baudrate")
@@ -405,51 +400,32 @@ def _format_connection_diagnostics_token_for_external(
 
 
 def _handle_quit(state: ExternalTcpInterfaceState) -> str:
-    """Close the client session, stopping an active recording before returning BYE."""
-    if state.state_name != "RECORDING":
+    """Save an active session if needed and close the client session."""
+    if state.continuous_session is None:
         return ok("BYE")
-
-    stop_response = _handle_stop(state)
-    if not stop_response.startswith("OK RECORDING_STOPPED"):
-        return stop_response
-
-    return stop_response.replace(
-        "OK RECORDING_STOPPED",
-        "OK BYE recording_stopped=True",
-        1,
-    )
+    save_response = _handle_save(state)
+    if not save_response.startswith("OK SESSION_SAVED"):
+        return save_response
+    return save_response.replace("OK SESSION_SAVED", "OK BYE session_saved=True", 1)
 
 
 def _handle_tare(state: ExternalTcpInterfaceState) -> str:
-    """Run SetZero on prepared devices, including active runtime recordings."""
-    if state.prepared_session is None:
-        return err("NO_PREPARED_SESSION")
-
-    if state.state_name == "RECORDING":
-        from ..runtime.runtime_session import run_runtime_set_zero_cycle_concurrently
-
-        reports = run_runtime_set_zero_cycle_concurrently(
-            state.prepared_session.applied_setup,
-        )
-        ok_count = sum(1 for report in reports if report.get("ok"))
-        return ok("SET_ZERO_DURING_RECORDING_DONE", devices=ok_count)
-
-    from ..runtime.runtime_session import set_zero_all_channels_concurrently
-
-    reports = set_zero_all_channels_concurrently(state.prepared_session.applied_setup)
+    """Run SetZero on prepared devices during an active transmission session."""
+    if state.prepared_session is None or state.continuous_session is None:
+        return err("NO_ACTIVE_SESSION")
+    reports = run_runtime_set_zero_cycle_concurrently(state.prepared_session.applied_setup)
     ok_count = sum(1 for report in reports if report.get("ok"))
     return ok("SET_ZERO_DONE", devices=ok_count)
 
 
-def _handle_record(command: ExternalCommand, state: ExternalTcpInterfaceState) -> str:
-    """Prepare a new recording session without starting transmission."""
-    if state.state_name == "RECORDING":
-        return err("BUSY")
+def _handle_session(command: ExternalCommand, state: ExternalTcpInterfaceState) -> str:
+    """Start a new transmission session without capturing samples yet."""
+    if state.state_name != "IDLE":
+        return err("BUSY", state=state.state_name, allowed_state="IDLE")
     invalid_options = sorted(key for key in command.options if key not in {"session", "session_name"})
     if invalid_options or len(command.args) > 1:
-        return err("INVALID_RECORD_SYNTAX", usage="RECORD <session_name> or RECORD session=<name>")
-    _cleanup_state(state)
-    session_name = _record_session_name(command)
+        return err("INVALID_SESSION_SYNTAX", usage="SESSION <session_name> or SESSION session=<name>")
+    session_name = _session_name(command)
     if not session_name:
         return err("MISSING_SESSION_NAME")
     resolved_setup = resolve_setup(state.setup_config)
@@ -461,6 +437,9 @@ def _handle_record(command: ExternalCommand, state: ExternalTcpInterfaceState) -
     )
     state.prepared_session = prepared
     state.session_name = session_name
+    state.file_context = None
+    state.report_text = None
+    state.graph_path = None
     if not prepared.can_start_transmission:
         warnings = _blocking_warnings_text(prepared)
         close_prepared_recording_session(prepared)
@@ -471,11 +450,14 @@ def _handle_record(command: ExternalCommand, state: ExternalTcpInterfaceState) -
             **_setup_response_fields(state.setup_key),
             warnings=warnings,
         )
+    state.continuous_session = start_prepared_continuous_session(prepared)
     return ok(
-        "RECORD_READY",
+        "SESSION_READY",
         session=session_name,
         **_setup_response_fields(state.setup_key),
-        zero=prepared.zero_before_recording,
+        tare="done" if prepared.zero_before_recording else "skipped",
+        transmission="started",
+        next="START",
     )
 
 
@@ -484,6 +466,7 @@ def _blocking_warnings_text(prepared: PreparedRecordingSession) -> str:
     tokens: list[str] = []
     for applied_device in prepared.applied_setup.devices:
         alias = applied_device.resolved_device.alias
+        name = applied_device.device.name
         for warning in applied_device.warnings:
             if not warning.get("blocking"):
                 continue
@@ -495,14 +478,14 @@ def _blocking_warnings_text(prepared: PreparedRecordingSession) -> str:
             if detail is None:
                 detail = context.get("baudrate_source")
             if detail is None:
-                tokens.append(f"{alias}:{key}")
+                tokens.append(f"{alias}:{name}:{key}")
             else:
-                tokens.append(f"{alias}:{key}:{detail}")
+                tokens.append(f"{alias}:{name}:{key}:{detail}")
     return ",".join(tokens) or "<none>"
 
 
-def _record_session_name(command: ExternalCommand) -> str | None:
-    """Return session name from key-value or shorthand RECORD syntax."""
+def _session_name(command: ExternalCommand) -> str | None:
+    """Return session name from key-value or shorthand SESSION syntax."""
     return (
         command.options.get("session")
         or command.options.get("session_name")
@@ -510,57 +493,67 @@ def _record_session_name(command: ExternalCommand) -> str | None:
     )
 
 
-def _handle_start(state: ExternalTcpInterfaceState) -> str:
-    """Start a prepared recording session in the background."""
-    if state.prepared_session is None:
-        return err("NO_PREPARED_SESSION")
-    if state.recording_thread is not None and state.recording_thread.is_alive():
+def _handle_start(command: ExternalCommand, state: ExternalTcpInterfaceState) -> str:
+    """Start one capture window, optionally with a non-blocking auto-stop timer."""
+    if state.continuous_session is None:
+        return err("NO_ACTIVE_SESSION")
+    if state.continuous_session.is_capturing:
         return err("ALREADY_RECORDING")
+    duration = parse_optional_duration(command.args)
+    state.continuous_session.start_capture()
+    if duration is not None:
+        _start_capture_timer(state, duration.seconds)
+        return ok("RECORDING_STARTED", duration=duration.text, auto_stop=True)
+    return ok("RECORDING_STARTED")
 
-    started_event = Event()
-    state.stop_event = Event()
-    state.recording_error = None
-    state.recording_result = None
 
-    def on_recording_started() -> None:
-        started_event.set()
+def _start_capture_timer(state: ExternalTcpInterfaceState, duration_s: float) -> None:
+    """Start or replace the auto-stop timer for the active capture window."""
+    _cancel_capture_timer(state)
+    cancel_event = Event()
+    state.capture_timer_cancel = cancel_event
 
     def worker() -> None:
-        try:
-            state.recording_result = record_prepared_session_until_stopped(
-                state.prepared_session,
-                stop_event=state.stop_event,
-                on_recording_started=on_recording_started,
-            )
-        except BaseException as error:
-            state.recording_error = error
-            state.stop_event.set()
+        if cancel_event.wait(duration_s):
+            return
+        with state.lock:
+            if state.continuous_session is not None and state.continuous_session.is_capturing:
+                state.continuous_session.stop_capture(automatic=True)
 
-    state.recording_thread = Thread(
+    state.capture_timer_thread = Thread(
         target=worker,
-        name="gsvpiko-external-recording",
+        name="gsvpiko-external-auto-stop",
         daemon=True,
     )
-    state.recording_thread.start()
-    if started_event.wait(timeout=10.0):
-        return ok("RECORDING_STARTED")
-    if state.recording_error is not None:
-        return err("START_FAILED", error=state.recording_error)
-    return ok("STARTING")
+    state.capture_timer_thread.start()
+
+
+def _cancel_capture_timer(state: ExternalTcpInterfaceState) -> None:
+    """Cancel a pending external auto-stop timer."""
+    if state.capture_timer_cancel is not None:
+        state.capture_timer_cancel.set()
+    state.capture_timer_cancel = None
+    state.capture_timer_thread = None
 
 
 def _handle_stop(state: ExternalTcpInterfaceState) -> str:
-    """Stop the active recording and write CSV/report/plot output."""
-    if state.recording_thread is None or state.stop_event is None:
+    """Pause the active capture window while transmission continues."""
+    if state.continuous_session is None:
+        return err("NO_ACTIVE_SESSION")
+    if not state.continuous_session.is_capturing:
         return err("NOT_RECORDING")
-    state.stop_event.set()
-    state.recording_thread.join()
-    if state.recording_error is not None:
-        return err("RECORDING_FAILED", error=state.recording_error)
-    if state.prepared_session is None or state.recording_result is None:
-        return err("NO_RECORDING_RESULT")
+    _cancel_capture_timer(state)
+    state.continuous_session.stop_capture()
+    return ok("RECORDING_PAUSED", transmission="running")
 
-    run_result = state.prepared_session.to_run_result(state.recording_result)
+
+def _handle_save(state: ExternalTcpInterfaceState) -> str:
+    """Stop transmission, write CSV/report/plot output and close devices."""
+    if state.prepared_session is None or state.continuous_session is None:
+        return err("NO_ACTIVE_SESSION")
+    _cancel_capture_timer(state)
+    runtime_result = state.continuous_session.stop_transmission_and_collect()
+    run_result = state.prepared_session.to_run_result(runtime_result)
     state.file_context = build_recording_file_context(
         resolved_setup=state.prepared_session.resolved_setup,
         session_name=state.session_name or "session",
@@ -577,20 +570,26 @@ def _handle_stop(state: ExternalTcpInterfaceState) -> str:
         zero_before_recording=state.prepared_session.zero_before_recording,
     )
     write_recording_report(report_text=state.report_text, file_context=state.file_context)
-    state.graph_path = plot_gsvpiko_csv(
-        state.file_context.csv_path,
-        output_path=state.file_context.graph_path,
-    )
+    state.graph_path = None
+    if _has_records(runtime_result):
+        state.graph_path = plot_gsvpiko_csv(
+            state.file_context.csv_path,
+            output_path=state.file_context.graph_path,
+        )
     close_prepared_recording_session(state.prepared_session)
     state.prepared_session = None
-    state.recording_thread = None
-    state.stop_event = None
+    state.continuous_session = None
     return ok(
-        "RECORDING_STOPPED",
+        "SESSION_SAVED",
         csv_path=state.file_context.csv_path,
         report_path=state.file_context.report_path,
         graph_path=state.graph_path,
     )
+
+
+def _has_records(runtime_result: Any) -> bool:
+    """Return whether a runtime result contains at least one stored sample."""
+    return any(device_result.records for device_result in runtime_result.device_results)
 
 
 def _handle_csv_preview(state: ExternalTcpInterfaceState) -> str:
@@ -619,12 +618,13 @@ def _write_response(connection: socket.socket, response: str) -> bool:
 
 def _cleanup_state(state: ExternalTcpInterfaceState) -> None:
     """Stop and close any prepared state owned by the external interface."""
-    if state.stop_event is not None:
-        state.stop_event.set()
-    if state.recording_thread is not None and state.recording_thread.is_alive():
-        state.recording_thread.join(timeout=5.0)
+    _cancel_capture_timer(state)
+    if state.continuous_session is not None:
+        try:
+            state.continuous_session.stop_transmission_and_collect()
+        except Exception:
+            pass
     if state.prepared_session is not None:
         close_prepared_recording_session(state.prepared_session)
     state.prepared_session = None
-    state.recording_thread = None
-    state.stop_event = None
+    state.continuous_session = None

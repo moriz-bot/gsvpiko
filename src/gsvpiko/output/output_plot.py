@@ -31,6 +31,7 @@ class CsvPlotData:
     header: list[str]
     rows: list[list[str]]
     events: list[CsvEventMarker]
+    units_by_channel: dict[str, str]
 
 
 def plot_gsvpiko_csv(
@@ -64,6 +65,7 @@ def plot_gsvpiko_csv(
         event_markers=data.events,
         output_path=resolved_output_path,
         title=title or path.stem,
+        y_label=_y_label_for_channels(selected_names, data.units_by_channel),
     )
     return resolved_output_path
 
@@ -94,6 +96,7 @@ def read_gsvpiko_csv_plot_data(csv_path: str | Path) -> CsvPlotData:
         header=header,
         rows=rows,
         events=parse_event_markers(metadata_rows),
+        units_by_channel=parse_channel_units(metadata_rows),
     )
 
 
@@ -116,6 +119,28 @@ def parse_event_markers(metadata_rows: list[list[str]]) -> list[CsvEventMarker]:
         events.extend(_parse_commands_metadata(command_text))
     return events
 
+
+
+def parse_channel_units(metadata_rows: list[list[str]]) -> dict[str, str]:
+    """Parse channel unit metadata from the CSV header."""
+    units: dict[str, str] = {}
+    in_channel_table = False
+    for row in metadata_rows:
+        if not row:
+            continue
+        key = row[0].strip()
+        if key.lower() == "# channel_alias":
+            in_channel_table = True
+            continue
+        if in_channel_table and key == "#":
+            break
+        if not in_channel_table or not key.startswith("# ") or len(row) < 2:
+            continue
+        channel_name = key[2:].strip()
+        unit = row[1].strip()
+        if channel_name and unit:
+            units[channel_name] = unit
+    return units
 
 def select_channels(
     channel_names: list[str],
@@ -230,6 +255,7 @@ def write_plot(
     event_markers: list[CsvEventMarker],
     output_path: Path,
     title: str,
+    y_label: str = "Value",
 ) -> None:
     """Write a PNG plot for selected series and event markers."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -238,7 +264,7 @@ def write_plot(
         plt.plot(x_values, y_values, label=channel_name)
     _draw_event_markers(event_markers)
     plt.xlabel("elapsed_s")
-    plt.ylabel("value")
+    plt.ylabel(y_label)
     plt.title(title)
     plt.grid(True)
     plt.legend(loc="best")
@@ -307,3 +333,15 @@ def _safe_filename_part(text: str) -> str:
     """Return a filename-safe channel-name token."""
     value = re.sub(r"[^A-Za-z0-9_.-]+", "_", text.strip())
     return value.strip("_") or "channel"
+
+
+def _y_label_for_channels(selected_names: list[str], units_by_channel: dict[str, str]) -> str:
+    """Return a y-axis label from channel unit metadata."""
+    units = {units_by_channel.get(name, "").strip() for name in selected_names}
+    units.discard("")
+    if len(units) != 1:
+        return "Value"
+    unit = next(iter(units))
+    if unit == "N":
+        return "Force [N]"
+    return f"Value [{unit}]"

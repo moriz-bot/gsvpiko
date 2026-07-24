@@ -43,6 +43,7 @@ class RuntimeDeviceResult:
     records: list[RuntimeMeasurementRecord] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     discarded_frame_count: int = 0
+    uncaptured_frame_count: int = 0
     started_at_unix_s: float | None = None
     ended_at_unix_s: float | None = None
     started_at_monotonic_s: float | None = None
@@ -62,7 +63,7 @@ class RuntimeDeviceResult:
     @property
     def total_measurement_frames_read(self) -> int:
         """Return stored and deliberately discarded measurement frames."""
-        return self.frame_count + self.discarded_frame_count
+        return self.frame_count + self.discarded_frame_count + self.uncaptured_frame_count
 
     @property
     def has_errors(self) -> bool:

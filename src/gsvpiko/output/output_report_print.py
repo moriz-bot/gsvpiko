@@ -196,6 +196,7 @@ def format_runtime_device_result_lines(
         f"    timestamp_mode: {_timestamp_mode(device_result)}",
         f"    frames: {device_result.frame_count}",
         f"    discarded_frames: {device_result.discarded_frame_count}",
+        f"    uncaptured_frames: {getattr(device_result, 'uncaptured_frame_count', 0)}",
         "    total_measurement_frames_read: "
         f"{device_result.total_measurement_frames_read}",
         f"    errors: {len(device_result.errors)}",

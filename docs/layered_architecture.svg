@@ -21,14 +21,14 @@
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
      inkscape:zoom="2.94"
-     inkscape:cx="129.93197"
+     inkscape:cx="129.7619"
      inkscape:cy="61.734694"
      inkscape:window-width="1920"
      inkscape:window-height="974"
      inkscape:window-x="-11"
      inkscape:window-y="-11"
      inkscape:window-maximized="1"
-     inkscape:current-layer="svg45" />
+     inkscape:current-layer="g49" />
   <style
      id="style1">
 .title{font:700 30px Arial;fill:#1a1a1a}.label{font:700 20px Arial;fill:#1a1a1a}.text{font:14px Arial;fill:#222}.small{font:12px Arial;fill:#333}
@@ -132,7 +132,7 @@
        y="168"
        class="small"
        id="text5"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:12px;line-height:normal;font-family:Arial">app_record_values_from_setup.py</text>
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:12px;line-height:normal;font-family:Arial">app_record.py</text>
   </g>
   <g
      id="g48"

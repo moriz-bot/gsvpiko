@@ -14,8 +14,10 @@ from typing import Any, Callable
 from ..device.device_connection import BaudrateProbeResult
 from ..runtime.runtime_measurement_buffer import RuntimeRecordingResult
 from ..runtime.runtime_session import (
+    ContinuousRuntimeSession,
     run_fixed_frame_runtime_session,
     run_manual_runtime_session,
+    start_continuous_runtime_session,
 )
 from .coordination_setup_application import (
     AppliedSetup,
@@ -45,7 +47,7 @@ class RecordingRunResult:
 
 @dataclass
 class PreparedRecordingSession:
-    """Open setup state kept between RECORD, START, and STOP."""
+    """Open setup state kept between SESSION, START, STOP, and SAVE."""
 
     setup_config: dict[str, Any]
     resolved_setup: ResolvedSetup
@@ -178,4 +180,26 @@ def record_prepared_session_until_stopped(
         ),
         zero_before_recording=prepared_session.zero_before_recording,
         on_recording_started=on_recording_started,
+    )
+
+
+def start_prepared_continuous_session(
+    prepared_session: PreparedRecordingSession,
+    *,
+    discard_initial_frames: int | None = None,
+) -> ContinuousRuntimeSession:
+    """Start transmission/readers for a prepared session without recording frames yet."""
+    if not prepared_session.can_start_transmission:
+        raise RecordingCoordinationError(
+            "Prepared setup collected blocking warnings; transmission not started."
+        )
+
+    return start_continuous_runtime_session(
+        prepared_session.applied_setup,
+        discard_initial_frames=(
+            prepared_session.resolved_setup.discard_initial_frames
+            if discard_initial_frames is None
+            else int(discard_initial_frames)
+        ),
+        zero_before_recording=prepared_session.zero_before_recording,
     )

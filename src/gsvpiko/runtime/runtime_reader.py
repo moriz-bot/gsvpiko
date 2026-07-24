@@ -381,6 +381,294 @@ class RuntimeManualMeasurementReader:
                     )
 
 
+@dataclass(frozen=True)
+class RuntimeCaptureReaderConfig:
+    """Configuration for continuous transmission with gated capture windows."""
+
+    discard_initial_frames: int = 0
+    expected_sample_rate_hz: float | None = None
+    use_batched_transport_reader: bool = True
+
+    def __post_init__(self) -> None:
+        """Validate reader configuration values."""
+        if self.discard_initial_frames < 0:
+            raise ValueError("discard_initial_frames must not be negative.")
+        if self.expected_sample_rate_hz is not None and self.expected_sample_rate_hz <= 0:
+            raise ValueError("expected_sample_rate_hz must be greater than zero.")
+
+
+@dataclass
+class RuntimeCaptureReaderGroup:
+    """A running set of continuous readers for one multi-device session."""
+
+    readers: list["RuntimeCaptureMeasurementReader"]
+    capture_event: Event
+    stop_event: Event
+
+    @property
+    def is_capturing(self) -> bool:
+        """Return whether samples are currently being stored."""
+        return self.capture_event.is_set()
+
+    def start_capture(self) -> None:
+        """Start storing incoming measurement frames."""
+        self.capture_event.set()
+
+    def stop_capture(self) -> None:
+        """Stop storing frames while readers continue draining the transport."""
+        self.capture_event.clear()
+
+    def stop_and_join(self) -> list[RuntimeDeviceResult]:
+        """Stop all readers and return their collected results."""
+        self.capture_event.clear()
+        self.stop_event.set()
+        for reader in self.readers:
+            reader.join()
+        return [reader.result for reader in self.readers]
+
+
+class RuntimeCaptureMeasurementReader:
+    """Continuously read measurement frames and store them only while capture is active."""
+
+    def __init__(
+        self,
+        applied_device: AppliedSetupDevice,
+        *,
+        config: RuntimeCaptureReaderConfig,
+        ready_barrier: Barrier,
+        start_event: Event,
+        capture_event: Event,
+        stop_event: Event,
+    ) -> None:
+        self.applied_device = applied_device
+        self.config = config
+        self.ready_barrier = ready_barrier
+        self.start_event = start_event
+        self.capture_event = capture_event
+        self.stop_event = stop_event
+        self.result = RuntimeDeviceResult(
+            device_alias=applied_device.resolved_device.alias,
+            device_name=applied_device.device.name,
+        )
+        self._thread = Thread(
+            target=self._run,
+            name=f"gsvpiko-capture-reader-{applied_device.resolved_device.alias}",
+            daemon=True,
+        )
+
+    def start(self) -> None:
+        """Start the reader thread."""
+        self._thread.start()
+
+    def join(self, timeout: float | None = None) -> None:
+        """Wait until the reader thread stops."""
+        self._thread.join(timeout=timeout)
+
+    @property
+    def is_alive(self) -> bool:
+        """Return whether the reader thread is still running."""
+        return self._thread.is_alive()
+
+    def _run(self) -> None:
+        """Reader thread body."""
+        self.result.started_at_unix_s = time()
+        self.result.started_at_monotonic_s = perf_counter()
+        try:
+            self.ready_barrier.wait()
+            self.start_event.wait()
+            if self.config.use_batched_transport_reader:
+                self._run_batched_transport_reader()
+            else:
+                self._run_frame_by_frame_reader()
+        except Exception as error:
+            self.result.errors.append(str(error))
+        finally:
+            self.result.ended_at_unix_s = time()
+            self.result.ended_at_monotonic_s = perf_counter()
+
+    def _run_frame_by_frame_reader(self) -> None:
+        """Read frames and store only active capture windows."""
+        self.result.reader_type = "frame_by_frame_capture"
+        read_index = 0
+        stored_index = 0
+        was_capturing = False
+
+        while not self.stop_event.is_set():
+            frame = self.applied_device.device.acquisition.read_next_measurement_frame()
+            timestamp_unix_s = time()
+            timestamp_monotonic_s = perf_counter()
+            read_index += 1
+
+            if read_index <= self.config.discard_initial_frames:
+                self.result.discarded_frame_count += 1
+                continue
+
+            capturing = self.capture_event.is_set()
+            if not capturing:
+                self.result.uncaptured_frame_count += 1
+                was_capturing = False
+                continue
+
+            stored_index += 1
+            timestamp_mode = "receive_time"
+            if not was_capturing:
+                was_capturing = True
+            self.result.records.append(
+                _build_runtime_record_from_frame(
+                    applied_device=self.applied_device,
+                    frame=frame,
+                    frame_index=stored_index,
+                    read_index=read_index,
+                    timestamp_unix_s=timestamp_unix_s,
+                    timestamp_monotonic_s=timestamp_monotonic_s,
+                    receive_timestamp_unix_s=timestamp_unix_s,
+                    receive_timestamp_monotonic_s=timestamp_monotonic_s,
+                    timestamp_mode=timestamp_mode,
+                )
+            )
+
+    def _run_batched_transport_reader(self) -> None:
+        """Read transport bytes continuously and store gated capture windows."""
+        transport = _require_base_transport(self.applied_device.device.transport)
+        self.result.reader_type = f"batched_{transport.connection_type}_capture"
+        read_index = 0
+        stored_index = 0
+        first_stored_unix_s: float | None = None
+        first_stored_monotonic_s: float | None = None
+        segment_first_frame_index = 1
+        was_capturing = False
+        last_progress_monotonic_s = perf_counter()
+
+        with RuntimeFrameRouter(self.applied_device, self.result) as router:
+            while not self.stop_event.is_set():
+                chunk = transport.read_available(BATCH_READ_SIZE)
+                receive_timestamp_unix_s = time()
+                receive_timestamp_monotonic_s = perf_counter()
+
+                if chunk:
+                    self.result.bytes_read += len(chunk)
+                    last_progress_monotonic_s = receive_timestamp_monotonic_s
+                elif receive_timestamp_monotonic_s - last_progress_monotonic_s > NO_PROGRESS_TIMEOUT_S:
+                    raise TimeoutError(
+                        "No measurement bytes were received before the batched-reader "
+                        f"timeout of {NO_PROGRESS_TIMEOUT_S:.3f} s."
+                    )
+                else:
+                    sleep(EMPTY_READ_SLEEP_S)
+                    continue
+
+                for routed_frame in router.route_available_bytes(
+                    chunk,
+                    receive_timestamp_unix_s=receive_timestamp_unix_s,
+                    receive_timestamp_monotonic_s=receive_timestamp_monotonic_s,
+                ):
+                    read_index += 1
+                    if read_index <= self.config.discard_initial_frames:
+                        self.result.discarded_frame_count += 1
+                        continue
+
+                    capturing = self.capture_event.is_set()
+                    if not capturing:
+                        self.result.uncaptured_frame_count += 1
+                        was_capturing = False
+                        continue
+
+                    stored_index += 1
+                    if not was_capturing:
+                        first_stored_unix_s = None
+                        first_stored_monotonic_s = None
+                        segment_first_frame_index = stored_index
+                        was_capturing = True
+                    if router.consume_timebase_restart_request():
+                        first_stored_unix_s = None
+                        first_stored_monotonic_s = None
+                        segment_first_frame_index = stored_index
+                    if first_stored_unix_s is None:
+                        first_stored_unix_s = routed_frame.receive_timestamp_unix_s
+                        first_stored_monotonic_s = routed_frame.receive_timestamp_monotonic_s
+
+                    timestamp_unix_s, timestamp_monotonic_s, timestamp_mode = (
+                        _timestamp_for_stored_frame(
+                            frame_index=stored_index,
+                            segment_first_frame_index=segment_first_frame_index,
+                            first_stored_unix_s=first_stored_unix_s,
+                            first_stored_monotonic_s=first_stored_monotonic_s,
+                            receive_timestamp_unix_s=routed_frame.receive_timestamp_unix_s,
+                            receive_timestamp_monotonic_s=routed_frame.receive_timestamp_monotonic_s,
+                            expected_sample_rate_hz=self.config.expected_sample_rate_hz,
+                        )
+                    )
+                    self.result.records.append(
+                        _build_runtime_record_from_routed_measurement_frame(
+                            applied_device=self.applied_device,
+                            routed_frame=routed_frame,
+                            frame_index=stored_index,
+                            read_index=read_index,
+                            timestamp_unix_s=timestamp_unix_s,
+                            timestamp_monotonic_s=timestamp_monotonic_s,
+                            timestamp_mode=timestamp_mode,
+                        )
+                    )
+
+
+def start_capture_readers_concurrently(
+    applied_devices: list[AppliedSetupDevice],
+    *,
+    discard_initial_frames: int = 0,
+    expected_sample_rate_hz: float | None = None,
+    use_batched_transport_reader: bool = True,
+    use_batched_serial_reader: bool | None = None,
+    on_readers_ready: Callable[[], None] | None = None,
+) -> RuntimeCaptureReaderGroup:
+    """Start continuous readers that drain transports and capture gated windows."""
+    capture_event = Event()
+    stop_event = Event()
+    if not applied_devices:
+        return RuntimeCaptureReaderGroup([], capture_event, stop_event)
+
+    config = RuntimeCaptureReaderConfig(
+        discard_initial_frames=discard_initial_frames,
+        expected_sample_rate_hz=expected_sample_rate_hz,
+        use_batched_transport_reader=(
+            use_batched_transport_reader
+            if use_batched_serial_reader is None
+            else use_batched_serial_reader
+        ),
+    )
+    ready_barrier = Barrier(len(applied_devices) + 1)
+    start_event = Event()
+    readers = [
+        RuntimeCaptureMeasurementReader(
+            applied_device,
+            config=config,
+            ready_barrier=ready_barrier,
+            start_event=start_event,
+            capture_event=capture_event,
+            stop_event=stop_event,
+        )
+        for applied_device in applied_devices
+    ]
+
+    for reader in readers:
+        reader.start()
+
+    callback_error: BaseException | None = None
+    try:
+        ready_barrier.wait()
+        if on_readers_ready is not None:
+            on_readers_ready()
+    except BaseException as error:
+        callback_error = error
+    finally:
+        start_event.set()
+
+    group = RuntimeCaptureReaderGroup(readers, capture_event, stop_event)
+    if callback_error is not None:
+        group.stop_and_join()
+        raise callback_error
+    return group
+
+
 def read_frames_concurrently(
     applied_devices: list[AppliedSetupDevice],
     *,

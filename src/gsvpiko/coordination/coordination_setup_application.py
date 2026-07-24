@@ -690,13 +690,15 @@ def format_setup_application_warning(warning: dict[str, Any]) -> str:
                 "Power-cycle the GSV device so the new baudrate is used."
             ),
             details=(
-                "Device: {device_alias}",
+                "Device alias: {device_alias}",
+                "GSV serial number: {device_name}",
                 "Requested baudrate: {configured_baudrate}",
                 "Active baudrate: {active_baudrate}",
                 "Requested value source: {baudrate_source}",
                 "The connection was opened with another working baudrate.",
                 "GSVpiko can store the requested baudrate for the next power cycle.",
-                "Measurement is not started while the setup baudrate is not active.",
+                "The program can continue for diagnostics and setup work.",
+                "Measurement start is blocked while the setup baudrate is not active.",
             ),
             context=context,
         )

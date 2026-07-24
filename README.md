@@ -43,7 +43,7 @@ py -m pip install "gsvpiko @ git+https://github.com/moriz-bot/gsvpiko.git"
 Install a specific tagged version:
 
 ```powershell
-py -m pip install "gsvpiko @ git+https://github.com/moriz-bot/gsvpiko.git@v0.1.3"
+py -m pip install "gsvpiko @ git+https://github.com/moriz-bot/gsvpiko.git@v0.1.4"
 ```
 
 ### Local checkout
@@ -89,12 +89,42 @@ py -c "from importlib.metadata import version; print(version('gsvpiko'))"
 - connection, runtime-rate and GSV status diagnostics
 - external TCP control interface with a simple ASCII command protocol
 - manual TCP client for testing the external control interface
-- local interactive recording shell via `gsvpiko-record-values`
+- local interactive recording shell via `gsvpiko-record`
 - CSV plotting helper via `gsvpiko-plot-csv`
 - NPort mode switching via `transport_nport`  
   → no NPort Administrator required for the supported Real COM/TCP workflow
 - baudrate probing  
   → automatic search for a working GSV-8 baudrate if the current device setting is unknown
+
+## Recording workflow
+
+The local recording app is started with:
+
+```powershell
+gsvpiko-record
+```
+
+The interactive workflow separates transmission from recorded capture windows:
+
+```text
+session ipc_test01   tare if configured and start GSV transmission
+start                start storing samples
+stop                 pause storing samples while transmission continues
+start 20 s           store samples for 20 seconds, then stop automatically
+save                 stop transmission and write CSV/report/PNG
+quit                 save an active session if needed and close the program
+```
+
+`start 20s`, `start 30m` and `start 4h` are accepted in addition to the spaced forms `start 20 s`, `start 30 m` and `start 4 h`. `tare` is only run at `session` start when the setup has `zero_before_recording=True`, or when the user explicitly enters `tare`. `start` never runs an automatic tare.
+
+The external TCP interface uses the same session workflow with single-line responses for clients:
+
+```text
+SESSION ipc_test01
+START 20S
+START 20S
+SAVE
+```
 
 ## Transport and NPort support
 
@@ -125,7 +155,7 @@ gsvpiko_logs/     text reports
 The recording app supports process-local overrides:
 
 ```powershell
-gsvpiko-record-values --data-dir C:\Measurements\GSVpikoData --log-dir C:\Measurements\GSVpikoLogs
+gsvpiko-record --data-dir C:\Measurements\GSVpikoData --log-dir C:\Measurements\GSVpikoLogs
 ```
 
 The local recording shell and the external TCP interface also support persistent output folders through their `path` command. Persistent settings are stored in the current user's GSVpiko settings file.
@@ -238,7 +268,7 @@ gsvpiko-read-values
 Record values from a setup:
 
 ```powershell
-gsvpiko-record-values
+gsvpiko-record
 ```
 
 Run the external TCP interface:

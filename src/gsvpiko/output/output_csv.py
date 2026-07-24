@@ -266,6 +266,9 @@ def _format_commands_metadata(
         return ""
 
     grouped: dict[str, dict[str, Any]] = {}
+    for report in runtime_result.events.get("command_reports", []):
+        group_id = str(report.get("command_group_id") or id(report))
+        grouped[group_id] = report
     for device_result in runtime_result.device_results:
         for report in device_result.runtime_command_reports:
             group_id = str(report.get("command_group_id") or id(report))

@@ -1,6 +1,6 @@
 # GSVpiko – Directory Structure
 
-This is the intended repository structure for the current package-oriented state @v0.1.3.
+This is the intended repository structure for the current package-oriented state @v0.1.4.
 Planned but unavailable parts are marked with `not implemented`.
 
 ## Project tree
@@ -37,7 +37,7 @@ GSVpiko/
 │       │   ├── app_diagnose_runtime_rates.py
 │       │   ├── app_external_tcp_interface.py
 │       │   ├── app_read_values_from_setup.py
-│       │   ├── app_record_values_from_setup.py
+│       │   ├── app_record.py
 │       │   ├── app_setup_application.py
 │       │   ├── app_setup_validation.py
 │       │   ├── client_tcp.py
@@ -156,6 +156,7 @@ GSVpiko/
 │       │
 │       └── utils/
 │           ├── __init__.py
+│           ├── utils_duration.py
 │           └── utils_hex.py
 │
 └── tests/                                  # not implemented
